@@ -1,0 +1,163 @@
+---
+title: "Clean_W1"
+author: "LC"
+date: "2020/6/7"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Downloding Files
+
+```{downling website data}
+getwd() #查看当前路径
+
+if (!file.exists("data")){
+  dir.create("data")
+} #新建文件夹
+
+fileUrl <- "https://data.baltimorecity.gov/api/views/dz54-2aru/rows.csv?accessType=DOWNLOAD"
+download.file(fileUrl, destfile = "./data/cameras.csv", method = "curl") #curl是windows默认，对应http
+list.files("./data") #查看文件是否下下来了
+
+dataDownloaded <- date()
+dataDownloaded #查看下载时间
+```
+## Reading Local Files
+```{reading csv}
+cameraData <- read.table("./data/cameras.csv") 
+#会出错，因为csv是用逗号做分隔符，而read.table是查找制表符分隔的文件
+cameraData <- read.table("./data/cameras.csv", sep = ",", header = TRUE)
+head(cameraData)
+cameraData <- read.csv("./data/cameras.csv")
+head(cameraData)
+```
+## Reading Excel files
+```{r reading excel}
+fileUrl <- "https://data.baltimorecity.gov/api/views/dz54-2aru/rows.xlsx?accessType=DOWNLOAD" #下载的excel数据不对，所以后面都会出错
+download.file(fileUrl, destfile = "./data/cameras.xlsx", method = "curl")
+dataDownloaded <- date()
+dataDownloaded
+
+library(xlsx) #需要安装java
+cameraData <- read.xlsx("./data/cameras.xlsx", sheetIndex = 1, header = TRUE)
+head(cameraData)
+colIndex <- 2:3
+rowIndex <- 1:4
+cameraDataSubset <- read.xlsx("./data/cameras.xlsx", sheetIndex = 1,colIndex = colIndex, rowIndex = rowIndex)
+cameraDataSubset
+```
+## Reading XML
+网站的结构化数据
+例如：起始标签<section>
+终止标签</section>
+XML的具体信息格式可以看wiki
+XPath语言可以用来下载数据
+```{r reading XML}
+library(XML)
+#example1
+fileUrl <- "http://www.w3schools.com/xml/simple.xml"
+doc <- xmlTreeParse(fileUrl,useInternal = TRUE) #封装文件
+rootNode <- xmlRoot(doc) #指定文件
+xmlName(rootNode)
+names(rootNode)
+rootNode[[1]]
+rootNode[[1]][[1]]
+library(XPath)
+xmlSApply(rootNode,xmlValue) #遍历文档，给出被标记的元素
+xpathSApply(rootNode,"//name",xmlValue)
+xpathSApply(rootNode,"//price",xmlValue)
+#example2
+fileUrl <- "http://espn.go.com/nfl/team/_name/bal/baltimore-ravens"
+doc <- htmlTreeParse(fileUrl,useInternal = TRUE)
+scores <- xpathSApply(doc,"//li[@class='score']",xmlValue)
+teams <- xpathSApply(doc,"//li[@class='team-name']",xmlValue)
+scores
+```
+## Reading JSON(Javascript Object Navigation)
+JSON可以通过编程方式检测对数据的访问,也是一种结构化的语言,感觉和GEO的metadata结构很像
+```{r Reading JSON}
+library(jsonlite)
+jsonData <- fromJSON("https://api.github.com/users/jtleek/repos")
+names(jsonData)
+names(jsonData$owner)
+jsonData$owner$login
+myjson <- toJSON(iris, pretty = TRUE) #将数据变成JSON格式
+cat(myjson)
+iris2 <- fromJSON(myjson) #返回到数据帧
+head(iris2)
+```
+##Using data.table
+是data.frame的下一代，比数据帧快,可以设置键值，利于查找和排序
+```{r Package:data.table}
+#和构建data.frame一模一样
+library(data.table)
+DF = data.frame(x=rnorm(9),y=rep(c("a","b","c"),each=3),z=rnorm(9))
+head(DF,3)
+DT = data.table(x=rnorm(9),y=rep(c("a","b","c"),each=3),z=rnorm(9))
+head(DF,3)
+#查看Table占用内存大小
+tables()
+#定义子集
+DT[2,]
+DT[DT$y=="a",] #给某元素赋值
+DT[c(2,3)] #取行的子集
+DT[,c(2,3)] #取列的子集
+{
+  x = 1
+  y =2
+}
+k = {print(10);5}
+print(k)
+#通过表达式计算值
+DT[,list(mean(x),sum(z))] #通过list进入参数，会返回函数值，利于总结函数
+DT[,table(y)]
+#加新列
+DT[,w:=z^2] #可以直接进行运算
+#⭐
+DT2 <- DT #当DT赋值给DT2时，改变DT,DT2也会跟着变
+DT[,y:=2]
+head(DT,n=3)
+head(DT2,n=3)
+#多项计算
+DT[,m:={tmp <- (x+z); #第一次定义m
+        log2(tmp+5)}] #在第一次定义的基础上再运算
+#类似于plyr的功能
+DT[,a:=x>0] #a是一组逻辑值
+DT[,b:=mean(x+w),by=a] #将b按照a的逻辑进行分组
+#特殊变量.N
+set.seed(123)
+DT <- data.table(x=sample(letters[1:3],1E5, TRUE))
+DT[, .N, by=x] #只计算按X变量分组的次数，所以会很快
+#Keys
+DT <- data.table(x=rep(c("a","b","c"),each=100),y=rnorm(300))
+setkey(DT,x) #将x列设置为key
+DT['a'] #找出key为'a'的列
+#合并
+DT1 <- data.table(x=c('a','a','b','dt1'),y=1:4)
+DT2 <- data.table(x=c('a','b','dt2'),z=5:7)
+setkey(DT1,x);setkey(DT2,x)
+merge(DT1,DT2) #合并key相同项
+#Fast reading
+big_df <- data.frame(x=rnorm(1E6),y=rnorm(1E6))
+file <- tempfile() #构建临时文件
+write.table(big_df, file = file, row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
+system.time(fread(file)) #测试readtable阅读时间
+system.time(read.table(file,header=TRUE, sep="\t"))
+```
+## swirl包
+```{r packages:swirl}
+install.packages("swirl")
+packageVersion("swirl")
+library(swirl)
+install_from_swirl("Getting and Cleaning Data")
+#swirl() #进入交互式课程
+```
+
+
